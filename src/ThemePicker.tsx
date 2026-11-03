@@ -1,0 +1,4 @@
+import{useEffect,useState}from'react';
+function apply(theme:string){document.documentElement.dataset.theme=theme;localStorage.setItem('branchdesk-theme',theme);window.dispatchEvent(new CustomEvent('branchdesk-theme',{detail:theme==='light'?'vs':'vs-dark'}))}
+export function ThemePicker(){const[theme,setTheme]=useState(()=>localStorage.getItem('branchdesk-theme')==='violet'?'violet':'light');useEffect(()=>apply(theme),[theme]);return <button className="appearance-switch" title="切换浅色 / 暮紫主题" aria-label="切换浅色 / 暮紫主题" onClick={()=>setTheme(t=>t==='light'?'violet':'light')}>{theme==='light'?'☀ 浅色':'☾ 暮紫'}</button>}
+export function useEditorTheme(){const[value,setValue]=useState(()=>localStorage.getItem('branchdesk-theme')==='violet'?'vs-dark':'vs');useEffect(()=>{const f=(e:Event)=>setValue((e as CustomEvent<string>).detail);window.addEventListener('branchdesk-theme',f);return()=>window.removeEventListener('branchdesk-theme',f)},[]);return value}
