@@ -55,3 +55,98 @@ header .workflow>.git-result-toast{position:fixed;right:14px;bottom:34px;top:aut
 .workspace>aside{overflow-anchor:none}.workspace>aside .tree{overflow-anchor:none}
 .history-context{position:fixed;z-index:150;width:242px;padding:5px;background:var(--popup);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 25px #0004}.history-context button{display:flex;width:100%;text-align:left;padding:9px;font-size:12px}
 .standalone-diff{height:100vh;display:flex;flex-direction:column;background:var(--editor-surface);color:var(--text)}.standalone-diff-title{flex-shrink:0;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.standalone-diff>.monaco-diff-editor{flex:1}
+
+/* The branch row owns hover/selection; nested buttons must not paint a second tile. */
+:root .bp-leaf>button:hover,
+:root .bp-leaf>button:active,
+:root .bp-leaf>button:focus{background:transparent}
+
+/* Layered translucent materials inspired by native macOS windows. */
+:root{
+  --glass-panel:rgba(31,35,46,.78);
+  --glass-raised:rgba(42,45,58,.88);
+  --glass-border:rgba(255,255,255,.11);
+  --glass-highlight:rgba(255,255,255,.055);
+  --glass-shadow:0 12px 34px rgba(4,6,12,.26);
+}
+body{background:#11141d}
+.app{
+  position:relative;
+  isolation:isolate;
+  background:
+    radial-gradient(ellipse at 12% -12%,rgba(92,124,255,.28),transparent 42%),
+    radial-gradient(ellipse at 92% 18%,rgba(75,215,220,.16),transparent 36%),
+    radial-gradient(ellipse at 55% 115%,rgba(199,110,255,.14),transparent 42%),
+    linear-gradient(145deg,#151a26,#171821 55%,#111820);
+}
+.app::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  opacity:.25;
+  background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.014) 1px,transparent 1px);
+  background-size:28px 28px;
+  mask-image:linear-gradient(to bottom,#000,transparent 72%);
+}
+:root[data-theme] header{
+  margin:4px 0 5px;
+  border:1px solid var(--glass-border);
+  border-radius:11px;
+  background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.025)),rgba(19,22,31,.52);
+  box-shadow:inset 0 1px 0 var(--glass-highlight),0 6px 24px rgba(5,8,16,.15);
+  backdrop-filter:blur(24px) saturate(145%);
+  -webkit-backdrop-filter:blur(24px) saturate(145%);
+}
+.workspace>aside,main,.gitlogdock,.changes,.gitwindow{
+  background:var(--glass-panel);
+  border-color:var(--glass-border);
+  box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow);
+  backdrop-filter:blur(22px) saturate(135%);
+  -webkit-backdrop-filter:blur(22px) saturate(135%);
+}
+main{background:rgba(24,27,36,.9)}
+.tabs,.panelhead,.commitcompose,.gl-filters{
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+}
+.bp-popup,.bp-submenu,.theme-menu,.projectviews,.file-context,.history-context,.sync-confirm,header .workflow>.git-result-toast{
+  background:var(--glass-raised);
+  border-color:rgba(255,255,255,.15);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 20px 55px rgba(0,0,0,.38);
+  backdrop-filter:blur(30px) saturate(155%);
+  -webkit-backdrop-filter:blur(30px) saturate(155%);
+}
+.sync-confirm-backdrop{background:rgba(5,8,14,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+button,.treerow,.gl-ref{transition:background-color .14s ease,color .14s ease,box-shadow .14s ease,transform .14s ease}
+.primary{box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 5px 15px color-mix(in srgb,var(--accent) 26%,transparent)}
+.primary:active{transform:translateY(1px)}
+.branch,.appearance-switch{box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+
+:root[data-theme=light]{
+  --glass-panel:rgba(248,251,255,.72);
+  --glass-raised:rgba(255,255,255,.86);
+  --glass-border:rgba(58,78,105,.14);
+  --glass-highlight:rgba(255,255,255,.75);
+  --glass-shadow:0 12px 34px rgba(44,69,94,.12);
+}
+:root[data-theme=light] body{background:#dbe8f1}
+:root[data-theme=light] .app{
+  background:
+    radial-gradient(ellipse at 8% -10%,rgba(104,145,255,.28),transparent 43%),
+    radial-gradient(ellipse at 92% 16%,rgba(88,211,207,.22),transparent 38%),
+    radial-gradient(ellipse at 62% 110%,rgba(177,123,235,.16),transparent 42%),
+    linear-gradient(145deg,#e8f1fb,#edf2f5 54%,#e2efea);
+}
+:root[data-theme=light] header{background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.34)),rgba(242,248,252,.42)}
+:root[data-theme=light] main{background:rgba(255,255,255,.84)}
+:root[data-theme=light] .tabs,:root[data-theme=light] .panelhead,:root[data-theme=light] .commitcompose,:root[data-theme=light] .gl-filters{background:linear-gradient(180deg,rgba(255,255,255,.48),rgba(255,255,255,.12))}
+@media(prefers-reduced-transparency:reduce){header,.workspace>aside,main,.gitlogdock,.changes,.gitwindow,.bp-popup,.bp-submenu,.theme-menu,.projectviews,.file-context,.history-context,.sync-confirm{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--panel)}}
+
+/* Keep the top toolbar crisp and opaque. */
+:root[data-theme] header{
+  background:var(--panel);
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
+  box-shadow:none;
+}

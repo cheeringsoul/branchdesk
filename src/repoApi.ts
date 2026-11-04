@@ -7,7 +7,11 @@ export const gitApi={snapshot:(root:string,includeHistory=true,branch?:string,in
 export const fileHistory=(root:string,path:string)=>invoke<import('./types').Commit[]>('file_history',{root,path});
 
 export interface Workflow {merging:boolean;conflicts:string[];remotes:string[];upstream:string;branch:string}
-export const workflowApi={state:(root:string)=>invoke<Workflow>('git_workflow',{root}),action:(root:string,action:string,value='')=>invoke<string>('git_workflow_action',{root,action,value})};
+export const workflowApi={
+  state:(root:string)=>invoke<Workflow>('git_workflow',{root}),
+  action:(root:string,action:string,value='')=>invoke<string>('git_workflow_action',{root,action,value}),
+  authenticate:(root:string,action:string,value:string,username:string,password:string)=>invoke<string>('git_workflow_auth',{root,action,value,username,password})
+};
 
 export const createEntry=(root:string,path:string,directory:boolean)=>invoke<void>('create_entry',{root,path,directory});
 

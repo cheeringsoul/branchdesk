@@ -1,7 +1,477 @@
-import {confirmDialog} from './ConfirmDialog';
-import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {GitBranch,Search,ChevronRight,ChevronDown,Folder,Star,Plus,ArrowUpRight,ArrowDownLeft,GitCommitHorizontal} from 'lucide-react';
-import {gitApi,workflowApi} from './repoApi';import type {Repo} from './types';
-export function BranchPopup({repo,dirty,onSaveAll,onClose,onCommit,onRefresh}:{repo:Repo;dirty:boolean;onSaveAll?:()=>Promise<boolean>;onClose:()=>void;onCommit:()=>void;onRefresh:()=>Promise<void>}){const[menuPosition,setMenuPosition]=useState({left:0,top:0});const submenuRef=useRef<HTMLDivElement>(null);const[remoteNames,setRemoteNames]=useState<string[]>([]);const[newOpen,setNewOpen]=useState(false),[newName,setNewName]=useState('');const[branches,setBranches]=useState<string[]>([]),[query,setQuery]=useState(''),[selected,setSelected]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[collapsed,setCollapsed]=useState<Set<string>>(new Set()),[favorites,setFavorites]=useState<string[]>([]);const ref=useRef<HTMLDivElement>(null);const[anchor,setAnchor]=useState(()=>{const rect=document.querySelector('header .branch')?.getBoundingClientRect();return{left:rect?.left||0,top:rect?rect.bottom+5:46}});useLayoutEffect(()=>{const align=()=>{const el=document.querySelector('header .branch');if(el){const rect=el.getBoundingClientRect();setAnchor({left:rect.left,top:rect.bottom+5})}};align();window.addEventListener('resize',align);return()=>window.removeEventListener('resize',align)},[]);useEffect(()=>{try{setFavorites(JSON.parse(localStorage.getItem('branch-favorites:'+repo.root)||'[]'))}catch{setFavorites([])};workflowApi.state(repo.root).then(s=>setRemoteNames(s.remotes)).catch(e=>setError(String(e)));gitApi.snapshot(repo.root,false).then(d=>setBranches(d.branches)).catch(e=>setError(String(e)));const key=(e:KeyboardEvent)=>{if(e.key==='Escape')onClose()};const click=(e:PointerEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node)&&!(e.target as Element).closest('.branch'))onClose()};document.addEventListener('keydown',key);document.addEventListener('pointerdown',click);return()=>{document.removeEventListener('keydown',key);document.removeEventListener('pointerdown',click)}},[repo.root]);async function write(action:string,value:string){if(dirty&&(action==='checkout'||action==='merge')){if(!onSaveAll||!await confirmDialog('Save unsaved editor changes before continuing?')){setError('Save or close unsaved editor documents first.');return}if(!await onSaveAll())return}if(action!=='create'&&!await confirmDialog(action==='merge'?`Merge ${value} into ${repo.branch}?`:`${action} ${value}? Current: ${repo.branch}`))return;setBusy(true);setError('');try{if(action==='checkout'&&remoteNames.some(r=>value.startsWith(r+'/'))){await workflowApi.action(repo.root,'checkout_remote',value)}else{await gitApi.write(repo.root,action,value);}await onRefresh();onClose()}catch(e){setError(String(e));try{await onRefresh()}catch{}}finally{window.dispatchEvent(new Event('branchdesk-workflow'));setBusy(false)}}function toggle(key:string){setCollapsed(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n})}function star(b:string){const next=favorites.includes(b)?favorites.filter(x=>x!==b):[...favorites,b];setFavorites(next);localStorage.setItem('branch-favorites:'+repo.root,JSON.stringify(next))}function tree(items:string[],prefix:string){const groups=new Map<string,string[]>();const leaves:string[]=[];items.forEach(b=>{const name=b.slice(prefix.length);if(name.includes('/')){const group=name.split('/')[0];groups.set(group,[...(groups.get(group)||[]),b])}else leaves.push(b)});return <>{[...groups].map(([g,bs])=><div key={g}><button className="bp-row" onClick={()=>toggle(prefix+g)}>{collapsed.has(prefix+g)?<ChevronRight size={14}/>:<ChevronDown size={14}/>}<Folder size={16}/>{g}</button>{!collapsed.has(prefix+g)&&<div className="bp-indent">{tree(bs,prefix+g+'/')}</div>}</div>)}{leaves.map(b=><div data-branch-name={b} className={'bp-row bp-leaf '+(selected===b?'selected':'')} key={b}><button className="bp-star" aria-label={'Favorite '+b} onClick={()=>star(b)}>{favorites.includes(b)?<Star size={15} fill="currentColor"/>:<GitBranch size={15}/>}</button><button className="bp-branchname" onClick={()=>setSelected(selected===b?'':b)}><span>{b.slice(prefix.length)}{b===repo.branch?' ✓':''}</span><span className="grow"/><ChevronRight size={14}/></button></div>)}</>}
-useLayoutEffect(()=>{if(!selected)return;const align=()=>{const row=Array.from(ref.current?.querySelectorAll<HTMLElement>('[data-branch-name]')||[]).find(el=>el.dataset.branchName===selected);const popup=ref.current;if(!row||!popup)return;const rect=row.getBoundingClientRect(),parent=popup.getBoundingClientRect();const height=submenuRef.current?.offsetHeight||240;const width=submenuRef.current?.offsetWidth||290;let left=parent.right+6;if(left+width>window.innerWidth-8)left=Math.max(8,parent.left-width-6);setMenuPosition({left,top:Math.max(8,Math.min(rect.top,window.innerHeight-height-8))})};align();const scroll=ref.current?.querySelector('.bp-scroll');scroll?.addEventListener('scroll',align);window.addEventListener('resize',align);return()=>{scroll?.removeEventListener('scroll',align);window.removeEventListener('resize',align)}},[selected,branches,collapsed,query,anchor]);
-const matches=(b:string)=>b.toLowerCase().includes(query.toLowerCase());const visible=branches.filter(matches);return <div className="bp-popup" style={{left:anchor.left,top:anchor.top,width:`min(460px, calc(100vw - ${anchor.left+12}px))`}} ref={ref} role="dialog" aria-label="Git branches"><div className="bp-search"><Search size={18}/><input autoFocus placeholder="Search for branches and actions" aria-label="Search branches and actions" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(!visible.length)return;if(e.key==='ArrowDown'){e.preventDefault();const i=visible.indexOf(selected);setSelected(visible[(i+1)%visible.length])}else if(e.key==='ArrowUp'){e.preventDefault();const i=visible.indexOf(selected);setSelected(visible[(i-1+visible.length)%visible.length])}}}/></div>{error&&<div className="bp-error" role="alert">{error}</div>}{newOpen&&<form className="bp-newbranch" onSubmit={e=>{e.preventDefault();if(newName.trim())void write('create',newName.trim())}}><strong>New Branch</strong><div className="small muted">Starting from {repo.branch}</div><input autoFocus aria-label="New branch name" placeholder="feature/branch-name" value={newName} onChange={e=>setNewName(e.target.value)} required/><div className="bp-newactions"><button type="button" onClick={()=>setNewOpen(false)}>Cancel</button><button className="primary" disabled={busy||!newName.trim()} type="submit">{busy?'Creating…':'Create Branch'}</button></div></form>}<div className="bp-scroll"><button className="bp-row" onClick={()=>{window.dispatchEvent(new Event('branchdesk-workflow'));onClose()}} title="Use Git Sync above the workspace to Fetch, Pull or Push"><ArrowDownLeft size={18}/>Update Project…<span className="grow"/><small>Git Sync</small></button><button className="bp-row" onClick={()=>{onClose();onCommit()}}><GitCommitHorizontal size={18}/>Commit…<span className="grow"/><small>⌘K</small></button><button className="bp-row" onClick={()=>{window.dispatchEvent(new Event('branchdesk-workflow'));onClose()}} title="Use Push in Git Sync above the workspace"><ArrowUpRight size={18}/>Push…<span className="grow"/><small>Git Sync</small></button><div className="bp-sep"/><button className="bp-row" disabled={busy} onClick={()=>{setNewOpen(true);setError('')}}><Plus size={18}/>New Branch…</button><button className="bp-row" disabled title="Tag and detached revision checkout is not implemented yet"><span style={{width:18}}/>Checkout Tag or Revision…</button><div className="bp-sep"/>{favorites.some(matches)&&<><div className="bp-heading">Favorites</div>{tree(favorites.filter(b=>branches.includes(b)&&matches(b)),'')}</>}<button className="bp-heading" onClick={()=>toggle('local')}><ChevronDown size={14}/>Local</button>{!collapsed.has('local')&&<div className="bp-level">{tree(branches.filter(b=>!remoteNames.some(r=>b.startsWith(r+'/'))&&matches(b)),'')}</div>}<button className="bp-heading" onClick={()=>toggle('remote')}><ChevronDown size={14}/>Remote</button>{!collapsed.has('remote')&&<div className="bp-level">{tree(branches.filter(b=>remoteNames.some(r=>b.startsWith(r+'/'))&&matches(b)),'')}</div>}{!branches.length&&<p className="muted">{busy?'Loading…':'No branches available'}</p>}</div>{selected&&<div ref={submenuRef} className="bp-submenu" style={{position:'fixed',left:menuPosition.left,top:menuPosition.top,width:'min(290px, calc(100vw - 16px))',maxHeight:'calc(100vh - 16px)',overflowY:'auto',marginTop:0}}><strong>{selected}</strong><div className="small muted">Current: {repo.branch}</div><button disabled={busy||selected===repo.branch} onClick={()=>write('checkout',selected)}>Checkout</button><button disabled={busy||selected===repo.branch} onClick={()=>write('merge',selected)}>Merge {selected} into {repo.branch}</button><button onClick={()=>star(selected)}>{favorites.includes(selected)?'Remove from':'Add to'} Favorites</button><div className="bp-sep"/><button disabled={busy||selected===repo.branch||remoteNames.some(r=>selected.startsWith(r+'/'))} onClick={()=>write('delete',selected)}>Delete Local Branch…</button></div>}</div>}
+import { confirmDialog } from "./ConfirmDialog";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  GitBranch,
+  Search,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  Star,
+  Plus,
+  ArrowUpRight,
+  ArrowDownLeft,
+  GitCommitHorizontal,
+} from "lucide-react";
+import { gitApi, workflowApi } from "./repoApi";
+import type { Repo } from "./types";
+export function BranchPopup({
+  repo,
+  dirty,
+  onSaveAll,
+  onClose,
+  onCommit,
+  onRefresh,
+  onWorkingTreeChange,
+}: {
+  repo: Repo;
+  dirty: boolean;
+  onSaveAll?: () => Promise<boolean>;
+  onClose: () => void;
+  onCommit: () => void;
+  onRefresh: () => Promise<void>;
+  onWorkingTreeChange: () => Promise<void>;
+}) {
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
+  const submenuRef = useRef<HTMLDivElement>(null);
+  const [remoteNames, setRemoteNames] = useState<string[]>([]);
+  const [newOpen, setNewOpen] = useState(false),
+    [newName, setNewName] = useState("");
+  const [branches, setBranches] = useState<string[]>([]),
+    [query, setQuery] = useState(""),
+    [selected, setSelected] = useState(""),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [collapsed, setCollapsed] = useState<Set<string>>(new Set()),
+    [favorites, setFavorites] = useState<string[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState(() => {
+    const rect = document
+      .querySelector("header .branch")
+      ?.getBoundingClientRect();
+    return { left: rect?.left || 0, top: rect ? rect.bottom + 5 : 46 };
+  });
+  useLayoutEffect(() => {
+    const align = () => {
+      const el = document.querySelector("header .branch");
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        setAnchor({ left: rect.left, top: rect.bottom + 5 });
+      }
+    };
+    align();
+    window.addEventListener("resize", align);
+    return () => window.removeEventListener("resize", align);
+  }, []);
+  useEffect(() => {
+    try {
+      setFavorites(
+        JSON.parse(
+          localStorage.getItem("branch-favorites:" + repo.root) || "[]",
+        ),
+      );
+    } catch {
+      setFavorites([]);
+    }
+    workflowApi
+      .state(repo.root)
+      .then((s) => setRemoteNames(s.remotes))
+      .catch((e) => setError(String(e)));
+    gitApi
+      .snapshot(repo.root, false)
+      .then((d) => setBranches(d.branches))
+      .catch((e) => setError(String(e)));
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const click = (e: PointerEvent) => {
+      if (
+        ref.current &&
+        !ref.current.contains(e.target as Node) &&
+        !(e.target as Element).closest(".branch")
+      )
+        onClose();
+    };
+    document.addEventListener("keydown", key);
+    document.addEventListener("pointerdown", click);
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("pointerdown", click);
+    };
+  }, [repo.root]);
+  async function write(action: string, value: string) {
+    if (dirty && (action === "checkout" || action === "merge")) {
+      if (
+        !onSaveAll ||
+        !(await confirmDialog("Save unsaved editor changes before continuing?"))
+      ) {
+        setError("Save or close unsaved editor documents first.");
+        return;
+      }
+      if (!(await onSaveAll())) return;
+    }
+    if (
+      action !== "create" &&
+      !(await confirmDialog(
+        action === "merge"
+          ? `Merge ${value} into ${repo.branch}?`
+          : `${action} ${value}? Current: ${repo.branch}`,
+      ))
+    )
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      if (
+        action === "checkout" &&
+        remoteNames.some((r) => value.startsWith(r + "/"))
+      ) {
+        await workflowApi.action(repo.root, "checkout_remote", value);
+      } else {
+        await gitApi.write(repo.root, action, value);
+      }
+      if (action === "checkout" || action === "merge") {
+        await onWorkingTreeChange();
+      } else {
+        await onRefresh();
+      }
+      onClose();
+    } catch (e) {
+      setError(String(e));
+      try {
+        await onRefresh();
+      } catch {}
+    } finally {
+      window.dispatchEvent(new Event("branchdesk-workflow"));
+      setBusy(false);
+    }
+  }
+  function toggle(key: string) {
+    setCollapsed((s) => {
+      const n = new Set(s);
+      n.has(key) ? n.delete(key) : n.add(key);
+      return n;
+    });
+  }
+  function star(b: string) {
+    const next = favorites.includes(b)
+      ? favorites.filter((x) => x !== b)
+      : [...favorites, b];
+    setFavorites(next);
+    localStorage.setItem("branch-favorites:" + repo.root, JSON.stringify(next));
+  }
+  function tree(items: string[], prefix: string) {
+    const groups = new Map<string, string[]>();
+    const leaves: string[] = [];
+    items.forEach((b) => {
+      const name = b.slice(prefix.length);
+      if (name.includes("/")) {
+        const group = name.split("/")[0];
+        groups.set(group, [...(groups.get(group) || []), b]);
+      } else leaves.push(b);
+    });
+    return (
+      <>
+        {[...groups].map(([g, bs]) => (
+          <div key={g}>
+            <button className="bp-row" onClick={() => toggle(prefix + g)}>
+              {collapsed.has(prefix + g) ? (
+                <ChevronRight size={14} />
+              ) : (
+                <ChevronDown size={14} />
+              )}
+              <Folder size={16} />
+              {g}
+            </button>
+            {!collapsed.has(prefix + g) && (
+              <div className="bp-indent">{tree(bs, prefix + g + "/")}</div>
+            )}
+          </div>
+        ))}
+        {leaves.map((b) => (
+          <div
+            data-branch-name={b}
+            className={"bp-row bp-leaf " + (selected === b ? "selected" : "")}
+            key={b}
+          >
+            <button
+              className="bp-star"
+              aria-label={"Favorite " + b}
+              onClick={() => star(b)}
+            >
+              {favorites.includes(b) ? (
+                <Star size={15} fill="currentColor" />
+              ) : (
+                <GitBranch size={15} />
+              )}
+            </button>
+            <button
+              className="bp-branchname"
+              onClick={() => setSelected(selected === b ? "" : b)}
+            >
+              <span>
+                {b.slice(prefix.length)}
+                {b === repo.branch ? " ✓" : ""}
+              </span>
+              <span className="grow" />
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        ))}
+      </>
+    );
+  }
+  useLayoutEffect(() => {
+    if (!selected) return;
+    const align = () => {
+      const row = Array.from(
+        ref.current?.querySelectorAll<HTMLElement>("[data-branch-name]") || [],
+      ).find((el) => el.dataset.branchName === selected);
+      const popup = ref.current;
+      if (!row || !popup) return;
+      const rect = row.getBoundingClientRect(),
+        parent = popup.getBoundingClientRect();
+      const height = submenuRef.current?.offsetHeight || 240;
+      const width = submenuRef.current?.offsetWidth || 290;
+      let viewportLeft = parent.right + 6;
+      if (viewportLeft + width > window.innerWidth - 8)
+        viewportLeft = Math.max(8, parent.left - width - 6);
+      const viewportTop = Math.max(
+        8,
+        Math.min(rect.top, window.innerHeight - height - 8),
+      );
+      /* backdrop-filter makes the popup a containing block for fixed descendants, so convert viewport coordinates to popup-local coordinates. */ setMenuPosition(
+        { left: viewportLeft - parent.left, top: viewportTop - parent.top },
+      );
+    };
+    align();
+    const scroll = ref.current?.querySelector(".bp-scroll");
+    scroll?.addEventListener("scroll", align);
+    window.addEventListener("resize", align);
+    return () => {
+      scroll?.removeEventListener("scroll", align);
+      window.removeEventListener("resize", align);
+    };
+  }, [selected, branches, collapsed, query, anchor]);
+  const matches = (b: string) => b.toLowerCase().includes(query.toLowerCase());
+  const visible = branches.filter(matches);
+  return (
+    <div
+      className="bp-popup"
+      style={{
+        left: anchor.left,
+        top: anchor.top,
+        width: `min(460px, calc(100vw - ${anchor.left + 12}px))`,
+      }}
+      ref={ref}
+      role="dialog"
+      aria-label="Git branches"
+    >
+      <div className="bp-search">
+        <Search size={18} />
+        <input
+          autoFocus
+          placeholder="Search for branches and actions"
+          aria-label="Search branches and actions"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (!visible.length) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              const i = visible.indexOf(selected);
+              setSelected(visible[(i + 1) % visible.length]);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              const i = visible.indexOf(selected);
+              setSelected(visible[(i - 1 + visible.length) % visible.length]);
+            }
+          }}
+        />
+      </div>
+      {error && (
+        <div className="bp-error" role="alert">
+          {error}
+        </div>
+      )}
+      {newOpen && (
+        <form
+          className="bp-newbranch"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (newName.trim()) void write("create", newName.trim());
+          }}
+        >
+          <strong>New Branch</strong>
+          <div className="small muted">Starting from {repo.branch}</div>
+          <input
+            autoFocus
+            aria-label="New branch name"
+            placeholder="feature/branch-name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            required
+          />
+          <div className="bp-newactions">
+            <button type="button" onClick={() => setNewOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              disabled={busy || !newName.trim()}
+              type="submit"
+            >
+              {busy ? "Creating…" : "Create Branch"}
+            </button>
+          </div>
+        </form>
+      )}
+      <div className="bp-scroll">
+        <button
+          className="bp-row"
+          onClick={() => {
+            window.dispatchEvent(new Event("branchdesk-workflow"));
+            onClose();
+          }}
+          title="Use Git Sync above the workspace to Fetch, Pull or Push"
+        >
+          <ArrowDownLeft size={18} />
+          Update Project…
+          <span className="grow" />
+          <small>Git Sync</small>
+        </button>
+        <button
+          className="bp-row"
+          onClick={() => {
+            onClose();
+            onCommit();
+          }}
+        >
+          <GitCommitHorizontal size={18} />
+          Commit…
+          <span className="grow" />
+          <small>⌘K</small>
+        </button>
+        <button
+          className="bp-row"
+          onClick={() => {
+            window.dispatchEvent(new Event("branchdesk-workflow"));
+            onClose();
+          }}
+          title="Use Push in Git Sync above the workspace"
+        >
+          <ArrowUpRight size={18} />
+          Push…
+          <span className="grow" />
+          <small>Git Sync</small>
+        </button>
+        <div className="bp-sep" />
+        <button
+          className="bp-row"
+          disabled={busy}
+          onClick={() => {
+            setNewOpen(true);
+            setError("");
+          }}
+        >
+          <Plus size={18} />
+          New Branch…
+        </button>
+        <button
+          className="bp-row"
+          disabled
+          title="Tag and detached revision checkout is not implemented yet"
+        >
+          <span style={{ width: 18 }} />
+          Checkout Tag or Revision…
+        </button>
+        <div className="bp-sep" />
+        {favorites.some(matches) && (
+          <>
+            <div className="bp-heading">Favorites</div>
+            {tree(
+              favorites.filter((b) => branches.includes(b) && matches(b)),
+              "",
+            )}
+          </>
+        )}
+        <button className="bp-heading" onClick={() => toggle("local")}>
+          <ChevronDown size={14} />
+          Local
+        </button>
+        {!collapsed.has("local") && (
+          <div className="bp-level">
+            {tree(
+              branches.filter(
+                (b) =>
+                  !remoteNames.some((r) => b.startsWith(r + "/")) && matches(b),
+              ),
+              "",
+            )}
+          </div>
+        )}
+        <button className="bp-heading" onClick={() => toggle("remote")}>
+          <ChevronDown size={14} />
+          Remote
+        </button>
+        {!collapsed.has("remote") && (
+          <div className="bp-level">
+            {tree(
+              branches.filter(
+                (b) =>
+                  remoteNames.some((r) => b.startsWith(r + "/")) && matches(b),
+              ),
+              "",
+            )}
+          </div>
+        )}
+        {!branches.length && (
+          <p className="muted">{busy ? "Loading…" : "No branches available"}</p>
+        )}
+      </div>
+      {selected && (
+        <div
+          ref={submenuRef}
+          className="bp-submenu"
+          style={{
+            position: "fixed",
+            left: menuPosition.left,
+            top: menuPosition.top,
+            width: "min(290px, calc(100vw - 16px))",
+            maxHeight: "calc(100vh - 16px)",
+            overflowY: "auto",
+            marginTop: 0,
+          }}
+        >
+          <strong>{selected}</strong>
+          <div className="small muted">Current: {repo.branch}</div>
+          <button
+            disabled={busy || selected === repo.branch}
+            onClick={() => write("checkout", selected)}
+          >
+            Checkout
+          </button>
+          <button
+            disabled={busy || selected === repo.branch}
+            onClick={() => write("merge", selected)}
+          >
+            Merge {selected} into {repo.branch}
+          </button>
+          <button onClick={() => star(selected)}>
+            {favorites.includes(selected) ? "Remove from" : "Add to"} Favorites
+          </button>
+          <div className="bp-sep" />
+          <button
+            disabled={
+              busy ||
+              selected === repo.branch ||
+              remoteNames.some((r) => selected.startsWith(r + "/"))
+            }
+            onClick={() => write("delete", selected)}
+          >
+            Delete Local Branch…
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
