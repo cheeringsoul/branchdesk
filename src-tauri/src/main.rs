@@ -1,12 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use std::{path::{Path,PathBuf},process::Command,fs,collections::hash_map::DefaultHasher,hash::{Hash,Hasher}};
+use std::{path::{Path,PathBuf},process::Command,fs,collections::hash_map::DefaultHasher,hash::{Hash,Hasher},sync::atomic::{AtomicU64,Ordering}};
 use serde::Serialize;
+use tauri::{Emitter, Manager};
+use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
 mod git_features;
+mod terminal;
 use git_features::*;
+use terminal::*;
 #[derive(Serialize)]struct Change{path:String,status:String}
 #[derive(Serialize)]struct Repo{root:String,branch:String,bare:bool,changes:Vec<Change>}
 #[derive(Serialize)]struct Entry{name:String,path:String,directory:bool}
 #[derive(Serialize)]struct DocumentData{content:String,version:String}
+static NEXT_WINDOW_ID:AtomicU64=AtomicU64::new(1);
 fn git(root:&Path,args:&[&str])->Result<Vec<u8>,String>{let out=Command::new("git").arg("-C").arg(root).args(args).output().map_err(|e|e.to_string())?;if !out.status.success(){return Err(String::from_utf8_lossy(&out.stderr).trim().to_string())}Ok(out.stdout)}
 fn text(bytes:Vec<u8>)->String{String::from_utf8_lossy(&bytes).trim().to_string()}
 fn root_path(root:&str)->Result<PathBuf,String>{let p=fs::canonicalize(root).map_err(|e|e.to_string())?;let actual=text(git(&p,&["rev-parse","--show-toplevel"])?);if fs::canonicalize(actual).map_err(|e|e.to_string())?!=p{return Err("Repository root mismatch".into())}Ok(p)}
@@ -15,18 +20,77 @@ fn checked(root:&str,path:&str)->Result<PathBuf,String>{let base=root_path(root)
 fn version(bytes:&[u8])->String{let mut h=DefaultHasher::new();bytes.hash(&mut h);format!("{:x}",h.finish())}
 fn repo_status_sync(root:String)->Result<Repo,String>{let input=fs::canonicalize(root).map_err(|e|e.to_string())?;let bare=text(git(&input,&["rev-parse","--is-bare-repository"])? )=="true";if bare{return Err("Bare repositories have no editable working tree".into())}let root=text(git(&input,&["rev-parse","--show-toplevel"])?);let p=Path::new(&root);let branch=text(git(p,&["rev-parse","--abbrev-ref","HEAD"]).unwrap_or_else(|_|b"Unborn HEAD".to_vec()));let output=git(p,&["status","--porcelain=v1","-z","-uall"])?;let mut changes=Vec::new();let mut records=output.split(|b|*b==0);while let Some(row)=records.next(){if row.len()<4{continue}let status=String::from_utf8_lossy(&row[..2]).trim().to_string();let path=String::from_utf8(row[3..].to_vec()).map_err(|_|"Non-UTF-8 file names are unsupported")?;if row[..2].contains(&b'R')||row[..2].contains(&b'C'){records.next();}changes.push(Change{path,status});}Ok(Repo{root,branch,bare,changes})}
 #[tauri::command]
-async fn open_repo()->Result<Option<Repo>,String>{
+async fn open_repo(app:tauri::AppHandle,mode:String)->Result<Option<Repo>,String>{
+    if mode!="current"&&mode!="new"{return Err("Invalid repository window mode".into())}
     let Some(folder)=rfd::AsyncFileDialog::new().pick_folder().await else{return Ok(None)};
     let path=folder.path().to_string_lossy().into_owned();
-    tauri::async_runtime::spawn_blocking(move||repo_status_sync(path))
+    let repo=tauri::async_runtime::spawn_blocking(move||repo_status_sync(path))
         .await
         .map_err(|e|e.to_string())?
-        .map(Some)
+        ?;
+    if mode=="new"{
+        let encoded=repo.root.as_bytes().iter().fold(String::new(),|mut out,byte|{if byte.is_ascii_alphanumeric()||matches!(*byte,b'-'|b'_'|b'.'|b'~'){out.push(*byte as char)}else{out.push_str(&format!("%{byte:02X}"))}out});
+        let name=Path::new(&repo.root).file_name().and_then(|value|value.to_str()).unwrap_or("Repository");
+        let label=format!("repository-{}",NEXT_WINDOW_ID.fetch_add(1,Ordering::Relaxed));
+        tauri::WebviewWindowBuilder::new(&app,label,tauri::WebviewUrl::App(format!("index.html?repo={encoded}").into()))
+            .title(format!("BranchDesk — {name}"))
+            .inner_size(1280.0,860.0)
+            .min_inner_size(800.0,600.0)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0,26.0))
+            .build()
+            .map_err(|error|error.to_string())?;
+        return Ok(None)
+    }
+    Ok(Some(repo))
 }
 fn list_directory_sync(root:String,path:String)->Result<Vec<Entry>,String>{let base=root_path(&root)?;let p=checked_in(&base,&path)?;let mut entries=Vec::new();for entry in fs::read_dir(p).map_err(|e|e.to_string())?{let e=entry.map_err(|e|e.to_string())?;if e.file_name()==".git"{continue}let entry_path=e.path();let relative=entry_path.strip_prefix(&base).map_err(|e|e.to_string())?.to_string_lossy().to_string();let Ok(resolved)=fs::canonicalize(&entry_path)else{continue};if !resolved.starts_with(&base){continue}entries.push(Entry{name:e.file_name().to_string_lossy().into(),path:relative,directory:resolved.is_dir()});}entries.sort_by(|a,b|b.directory.cmp(&a.directory).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));Ok(entries)}
 fn read_document_sync(root:String,path:String)->Result<DocumentData,String>{let p=checked(&root,&path)?;if fs::metadata(&p).map_err(|e|e.to_string())?.len()>5_000_000{return Err("Files larger than 5 MB cannot be edited in this version".into())}let bytes=fs::read(p).map_err(|e|e.to_string())?;if bytes.contains(&0){return Err("Binary files cannot be edited".into())}let content=String::from_utf8(bytes.clone()).map_err(|_|"Only UTF-8 files can be edited")?;Ok(DocumentData{content,version:version(&bytes)})}
 fn save_document_sync(root:String,path:String,content:String,version:String)->Result<DocumentData,String>{let p=checked(&root,&path)?;let current=fs::read(&p).map_err(|e|e.to_string())?;if self::version(&current)!=version{return Err("File changed outside BranchDesk. Your editor content is preserved; reopen the file to review external changes.".into())}fs::write(p,content.as_bytes()).map_err(|e|e.to_string())?;Ok(DocumentData{version:self::version(content.as_bytes()),content})}
-fn main(){tauri::Builder::default().invoke_handler(tauri::generate_handler![open_repo,repo_status,list_directory,read_document,save_document,git_snapshot,git_diff,git_write,commit_files,file_history,git_workflow,git_workflow_action,git_workflow_auth,create_entry,mutate_entry]).run(tauri::generate_context!()).expect("Unable to start BranchDesk");}
+fn main(){
+    tauri::Builder::default()
+        .setup(|app| {
+            let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            let app_menu = SubmenuBuilder::new(app, "BranchDesk")
+                .about(None)
+                .separator()
+                .item(&settings)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let file_menu = SubmenuBuilder::new(app, "File").close_window().build()?;
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo().redo().separator().cut().copy().paste().select_all().build()?;
+            let view_menu = SubmenuBuilder::new(app, "View").fullscreen().build()?;
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize().maximize().separator().close_window().separator().bring_all_to_front().build()?;
+            let help_menu = SubmenuBuilder::new(app, "Help").build()?;
+            let menu = MenuBuilder::new(app)
+                .items(&[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu, &help_menu])
+                .build()?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "settings" {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                let _ = app.emit("open-settings", ());
+            }
+        })
+        .invoke_handler(tauri::generate_handler![open_repo,repo_status,list_directory,read_document,save_document,terminal_start,terminal_read,terminal_write,terminal_resize,terminal_close,git_snapshot,git_diff,git_write,git_revision_action,commit_files,file_history,git_workflow,git_workflow_action,git_workflow_auth,create_entry,mutate_entry])
+        .run(tauri::generate_context!())
+        .expect("Unable to start BranchDesk");
+}
 
 #[tauri::command]async fn repo_status(root:String)->Result<Repo,String>{tauri::async_runtime::spawn_blocking(move||repo_status_sync(root)).await.map_err(|e|e.to_string())?}
 

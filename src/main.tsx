@@ -9,18 +9,22 @@ import type { FileTarget } from "./FileContextMenu";
 import { mutateEntry } from "./repoApi";
 import { ProjectToolbar } from "./ProjectToolbar";
 import { createEntry } from "./repoApi";
-import { confirmDialog } from "./ConfirmDialog";
+import { confirmDialog, repositoryWindowDialog } from "./ConfirmDialog";
 import { GitWorkflow } from "./GitWorkflow";
 import { ThemePicker, useEditorTheme } from "./ThemePicker";
 import { FileHistory } from "./FileHistory";
 import { ResizeHandle } from "./ResizeHandle";
 import { GitLogPanel } from "./GitLogPanel";
 import { CommitPanel } from "./CommitPanel";
+import { TerminalPanel } from "./TerminalPanel";
 import { DiffEditor } from "@monaco-editor/react";
+import { listen } from "@tauri-apps/api/event";
 import { gitApi } from "./repoApi";
 import type { FileDiff } from "./types";
 import { BranchPopup } from "./BranchPopup";
-import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { SettingsDialog } from "./SettingsDialog";
+import { MarkdownPreview } from "./MarkdownPreview";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Editor, { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
@@ -33,16 +37,20 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
-  Plus,
   X,
   GitCommitHorizontal,
+  SquareTerminal,
 } from "lucide-react";
 import { repoApi, desktop } from "./repoApi";
 import type { Repo, Entry, Tab } from "./types";
 import "./style.css";
 (window as any).MonacoEnvironment = { getWorker: () => new Worker() };
 loader.config({ monaco });
+const TERMINAL_PREFIX = "\0terminal:";
+const terminalPath = (id: string) => TERMINAL_PREFIX + id;
+const isTerminalPath = (path: string) => path.startsWith(TERMINAL_PREFIX);
 function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [comparisonTabs, setComparisonTabs] = useState<
       Array<FileDiff & { id: string; title: string; path: string }>
     >([]),
@@ -53,6 +61,24 @@ function App() {
     setComparisonActive(id);
   }
   useEffect(installTreeKeyboard, []);
+  useEffect(() => {
+    if (!desktop) return;
+    let disposed = false;
+    let unlisten = () => {};
+    void listen("open-settings", () => setSettingsOpen(true)).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+  useEffect(() => {
+    const disableNativeContextMenu = (event: MouseEvent) => event.preventDefault();
+    window.addEventListener("contextmenu", disableNativeContextMenu, { capture: true });
+    return () => window.removeEventListener("contextmenu", disableNativeContextMenu, { capture: true });
+  }, []);
   const [context, setContext] = useState<FileTarget | null>(null);
   useEffect(() => {
     const f = (e: Event) => setContext((e as CustomEvent<FileTarget>).detail);
@@ -72,16 +98,32 @@ function App() {
     [commitFocus, setCommitFocus] = useState(0),
     [branches, setBranches] = useState(false),
     [bottom] = useState(true),
-    [sideWidth, setSideWidth] = useState(280),
+    [sideWidth, setSideWidth] = useState(300),
     [gitHeight, setGitHeight] = useState(340),
     [historyHeight, setHistoryHeight] = useState(180),
     [historyCollapsed, setHistoryCollapsed] = useState(false),
     [gitOpen, setGitOpen] = useState(false),
+    [terminals, setTerminals] = useState<Array<{ id: string; name: string }>>([]),
     [left, setLeft] = useState("Project"),
     [review, setReview] = useState<
       (FileDiff & { path: string; kind: string }) | null
     >(null);
   const tab = tabs.find((t) => t.path === active);
+  const markdownFile = !!tab && /\.(md|markdown)$/i.test(tab.path);
+  const [markdownMode, setMarkdownMode] = useState<"edit" | "split" | "preview">(() => {
+    const stored = localStorage.getItem("branchdesk-markdown-mode");
+    return stored === "edit" || stored === "preview" ? stored : "split";
+  });
+  useEffect(() => localStorage.setItem("branchdesk-markdown-mode", markdownMode), [markdownMode]);
+  const terminalCounter = useRef(0);
+  const newTerminal = useCallback(() => {
+    const id = crypto.randomUUID();
+    const number = ++terminalCounter.current;
+    setTerminals((current) => [...current, { id, name: number === 1 ? "Terminal" : `Terminal ${number}` }]);
+    setComparisonActive("");
+    setReview(null);
+    setActive(terminalPath(id));
+  }, []);
   const dirtyPaths = useMemo(
     () => new Set(tabs.filter((t) => t.content !== t.saved).map((t) => t.path)),
     [tabs],
@@ -113,14 +155,18 @@ function App() {
   }
   useEffect(() => {
     if (!desktop) return;
-    const root = localStorage.getItem("branchdesk-last-repo");
+    const requestedRoot = new URLSearchParams(window.location.search).get("repo");
+    const root = requestedRoot || localStorage.getItem("branchdesk-last-repo");
     if (!root) return;
     let cancelled = false;
     setBusy(true);
     repoApi
       .status(root)
       .then((r) => {
-        if (!cancelled) setRepo(r);
+        if (!cancelled) {
+          setRepo(r);
+          if (requestedRoot) localStorage.setItem("branchdesk-last-repo", r.root);
+        }
       })
       .catch((e) => {
         if (!cancelled)
@@ -159,7 +205,7 @@ function App() {
     setRepo(nextRepo);
     setTabs(survivingTabs);
     setActive((current) =>
-      survivingTabs.some((item) => item.path === current)
+      isTerminalPath(current) || survivingTabs.some((item) => item.path === current)
         ? current
         : (survivingTabs.at(-1)?.path ?? ""),
     );
@@ -189,7 +235,10 @@ function App() {
     };
   }, [repo?.root, busy, refresh]);
   async function open() {
+    const mode = await repositoryWindowDialog();
+    if (!mode) return;
     if (
+      mode === "current" &&
       dirty &&
       !(await confirmDialog(
         "Discard unsaved editor changes and open another repository?",
@@ -197,13 +246,15 @@ function App() {
     )
       return;
     await run(async () => {
-      const r = await repoApi.open();
+      const r = await repoApi.open(mode);
       if (r) {
         localStorage.setItem("branchdesk-last-repo", r.root);
         setRepo(r);
         setComparisonTabs([]);
         setComparisonActive("");
         setTabs([]);
+        setTerminals([]);
+        terminalCounter.current = 0;
         setActive("");
         setReview(null);
         setBranches(false);
@@ -369,6 +420,7 @@ function App() {
   }
   return (
     <div className="app">
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {context && (
         <FileContextMenu
           target={context}
@@ -458,6 +510,23 @@ function App() {
             aria-label="Git Log"
           >
             <GitBranch />
+          </button>
+          <button
+            className={isTerminalPath(active) ? "selected" : ""}
+            title="Terminal"
+            disabled={!repo}
+            onClick={() => {
+              if (terminals.length) {
+                setComparisonActive("");
+                setReview(null);
+                setActive(terminalPath(terminals.at(-1)!.id));
+              } else {
+                newTerminal();
+              }
+            }}
+            aria-label="Terminal"
+          >
+            <SquareTerminal />
           </button>
         </nav>
         {left === "Commit" && repo ? (
@@ -605,6 +674,37 @@ function App() {
                 </span>
               </button>
             ))}
+            {terminals.map((terminal) => (
+              <button
+                key={terminal.id}
+                className={active === terminalPath(terminal.id) && !review && !comparisonActive ? "current" : ""}
+                title="Double-click to open a new terminal"
+                onClick={() => {
+                  setComparisonActive("");
+                  setReview(null);
+                  setActive(terminalPath(terminal.id));
+                }}
+                onDoubleClick={newTerminal}
+              >
+                <SquareTerminal size={14} />
+                {terminal.name}
+                <span
+                  role="button"
+                  aria-label={`Close ${terminal.name}`}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    const rest = terminals.filter((item) => item.id !== terminal.id);
+                    setTerminals(rest);
+                    if (active === terminalPath(terminal.id)) {
+                      setActive(rest.length ? terminalPath(rest.at(-1)!.id) : (tabs.at(-1)?.path || ""));
+                    }
+                  }}
+                >
+                  <X size={12} />
+                </span>
+              </button>
+            ))}
             {comparisonTabs.map((c) => (
               <button
                 key={c.id}
@@ -683,39 +783,53 @@ function App() {
                 />
               </div>
             </>
+          ) : isTerminalPath(active) && terminals.some((terminal) => terminalPath(terminal.id) === active) && repo ? (
+            <></>
           ) : tab ? (
             <>
               <div className="breadcrumb">
                 <span>{tab.path}</span>
                 <div className="grow" />
+                {markdownFile && (
+                  <div className="markdown-mode-switch" role="group" aria-label="Markdown view mode">
+                    <button className={markdownMode === "edit" ? "selected" : ""} onClick={() => setMarkdownMode("edit")}>Edit</button>
+                    <button className={markdownMode === "split" ? "selected" : ""} onClick={() => setMarkdownMode("split")}>Split</button>
+                    <button className={markdownMode === "preview" ? "selected" : ""} onClick={() => setMarkdownMode("preview")}>Preview</button>
+                  </div>
+                )}
                 <button onClick={save} disabled={busy || repo?.bare}>
                   Save <kbd>⌘S</kbd>
                 </button>
               </div>
-              <div className="editor">
-                <Editor
-                  path={tab.path}
-                  theme={editorTheme}
-                  value={tab.content}
-                  onChange={(value) =>
-                    setTabs((ts) =>
-                      ts.map((t) =>
-                        t.path === active ? { ...t, content: value ?? "" } : t,
-                      ),
-                    )
-                  }
-                  options={{
-                    fontSize: 13,
-                    fontFamily: "SFMono-Regular, Menlo, monospace",
-                    minimap: { enabled: false },
-                    padding: { top: 18 },
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    readOnly: repo?.bare,
-                    wordBasedSuggestions: "off",
-                    quickSuggestions: false,
-                  }}
-                />
+              <div className={markdownFile ? `editor markdown-workspace markdown-${markdownMode}` : "editor"}>
+                {(!markdownFile || markdownMode !== "preview") && (
+                  <div className={markdownFile ? "markdown-source" : "editor-source"}>
+                    <Editor
+                      path={tab.path}
+                      theme={editorTheme}
+                      value={tab.content}
+                      onChange={(value) =>
+                        setTabs((ts) =>
+                          ts.map((t) =>
+                            t.path === active ? { ...t, content: value ?? "" } : t,
+                          ),
+                        )
+                      }
+                      options={{
+                        fontSize: 13,
+                        fontFamily: "SFMono-Regular, Menlo, monospace",
+                        minimap: { enabled: false },
+                        padding: { top: 18 },
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                        readOnly: repo?.bare,
+                        wordBasedSuggestions: "off",
+                        quickSuggestions: false,
+                      }}
+                    />
+                  </div>
+                )}
+                {markdownFile && markdownMode !== "edit" && <MarkdownPreview content={tab.content} />}
               </div>
             </>
           ) : repo ? (
@@ -738,7 +852,16 @@ function App() {
               </span>
             </div>
           )}
-          {bottom && !gitOpen && repo && (
+          {repo && terminals.map((terminal) => (
+              <div
+                key={terminal.id}
+                className="terminal-tab-content"
+                hidden={active !== terminalPath(terminal.id) || !!review || !!comparisonActive}
+              >
+                <TerminalPanel root={repo.root} />
+              </div>
+          ))}
+          {bottom && !gitOpen && repo && !isTerminalPath(active) && (
             <>
               {!historyCollapsed && (
                 <ResizeHandle
@@ -807,6 +930,7 @@ function App() {
           height={gitHeight}
           onHeight={setGitHeight}
           onClose={() => setGitOpen(false)}
+          onRefresh={refreshAfterWorkingTreeChange}
           onDiff={(path, commit) =>
             run(async () =>
               setReview({

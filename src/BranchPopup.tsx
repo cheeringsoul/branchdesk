@@ -442,8 +442,6 @@ export function BranchPopup({
             marginTop: 0,
           }}
         >
-          <strong>{selected}</strong>
-          <div className="small muted">Current: {repo.branch}</div>
           <button
             disabled={busy || selected === repo.branch}
             onClick={() => write("checkout", selected)}
