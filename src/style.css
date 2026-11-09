@@ -168,5 +168,48 @@ header .workflowbar button{padding:6px 9px}
 .bp-sep{margin:7px 2px}
 .terminal-tab-content{flex:1;min-height:0;display:flex}.terminal-tab-content[hidden]{display:none}.terminal-wrap{position:relative;display:flex;flex:1;min-width:0;min-height:0}.terminal-panel{flex:1;min-width:0;min-height:0;background:var(--editor-surface);padding:10px 8px 7px 12px;overflow:hidden}.terminal-panel .xterm{height:100%}.terminal-panel .xterm-viewport{border-radius:5px}.terminal-panel .xterm-screen{padding-top:2px}
 .settings-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#0005;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}.settings-window{width:min(760px,calc(100vw - 48px));height:min(560px,calc(100vh - 64px));display:flex;flex-direction:column;overflow:hidden;background:var(--popup);border:1px solid var(--border);border-radius:16px;box-shadow:0 26px 80px #0007;color:var(--text)}.settings-window .settings-header{height:48px;flex:0 0 48px;display:flex;align-items:center;padding:0 12px 0 18px;background:var(--panel);border-bottom:1px solid var(--border)}.settings-header strong{font-size:15px}.settings-header button{margin-left:auto;padding:6px}.settings-body{display:flex;flex:1;min-height:0}.settings-sidebar{width:170px;display:flex;flex-direction:column;gap:4px;padding:12px;background:color-mix(in srgb,var(--panel) 82%,var(--editor-surface));border-right:1px solid var(--border)}.settings-sidebar button{width:100%;justify-content:flex-start;padding:8px 10px}.settings-content{flex:1;overflow:auto;padding:24px 28px}.settings-content h2{margin:0 0 5px;font-size:20px}.settings-content>p{margin:0 0 22px}.settings-form{display:grid;gap:14px}.settings-form>label{display:grid;grid-template-columns:120px minmax(180px,1fr);align-items:center;gap:10px}.settings-form select{padding:7px 9px;color:var(--text);background:var(--editor-surface);border:1px solid var(--border);border-radius:7px}.settings-form small{grid-column:2;color:var(--muted);margin-top:-6px}.settings-range{display:flex;align-items:center;gap:12px}.settings-range input{flex:1;accent-color:var(--accent)}.settings-range output{width:46px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}.settings-form .settings-checkbox input{justify-self:start;accent-color:var(--accent)}.settings-reset{margin-top:20px;padding-left:0;color:var(--muted)}.settings-theme-options{display:flex;gap:12px}.settings-theme-options button{min-width:130px;border:1px solid var(--border);background:var(--editor-surface)}.settings-theme-options button.selected{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}.settings-theme-swatch{width:28px;height:20px;border-radius:5px;border:1px solid #8993a4}.settings-theme-swatch.light{background:linear-gradient(145deg,#f8fbff,#e4edf8)}.settings-theme-swatch.violet{background:linear-gradient(145deg,#24283a,#39304b)}.settings-footer{height:56px;flex:0 0 56px;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 14px;background:var(--panel);border-top:1px solid var(--border)}.settings-footer button{border:1px solid var(--border)}
+/* Warm light theme built around the supplied orange reference (#ff531f). */
+:root[data-theme=ember]{
+  color-scheme:light;
+  --bg:#fff0e7;
+  --panel:#fffaf6;
+  --editor-surface:#fffdfb;
+  --field:#fff3ec;
+  --popup:#fffdfb;
+  --text:#382820;
+  --muted:#80695e;
+  --accent:#ff531f;
+  --accent-hover:#e94310;
+  --accent-text:#fff;
+  --selected:#ffe0d2;
+  --selected-text:#a6320c;
+  --hover:#ffeadf;
+  --border:#efd3c5;
+  --scroll:#d7a48d;
+  --file-text:#965036;
+  --graph-hover:#ffdbca;
+  --glass-panel:rgba(255,250,246,.78);
+  --glass-raised:rgba(255,253,251,.92);
+  --glass-border:rgba(138,66,37,.15);
+  --glass-highlight:rgba(255,255,255,.86);
+  --glass-shadow:0 12px 34px rgba(110,47,22,.12);
+}
+:root[data-theme=ember] body{background:#f4ded2}
+:root[data-theme=ember] .app{
+  background:
+    radial-gradient(ellipse at 10% -12%,rgba(255,83,31,.26),transparent 42%),
+    radial-gradient(ellipse at 94% 16%,rgba(255,171,102,.22),transparent 38%),
+    radial-gradient(ellipse at 58% 115%,rgba(255,111,61,.14),transparent 43%),
+    linear-gradient(145deg,#fff2ea,#fff8f3 54%,#fce9df);
+}
+:root[data-theme=ember] main{background:rgba(255,253,251,.88)}
+:root[data-theme=ember] .tabs,:root[data-theme=ember] .panelhead,:root[data-theme=ember] .commitcompose,:root[data-theme=ember] .gl-filters{background:linear-gradient(180deg,rgba(255,255,255,.62),rgba(255,245,239,.26))}
+:root[data-theme=ember] .bp-popup,:root[data-theme=ember] .bp-submenu,:root[data-theme=ember] .theme-menu,:root[data-theme=ember] .projectviews,:root[data-theme=ember] .file-context,:root[data-theme=ember] .history-context,:root[data-theme=ember] .sync-confirm,:root[data-theme=ember] header .workflow>.git-result-toast{border-color:var(--glass-border);box-shadow:inset 0 1px 0 #fff,0 20px 55px rgba(110,47,22,.16)}
+:root[data-theme=ember] .logo,:root[data-theme=ember] .dot{color:#df4514}
+:root[data-theme=ember] button:focus-visible{outline-color:#ff7a4d}
+:root[data-theme=ember] .resize-handle:hover,:root[data-theme=ember] .resize-handle:active,:root[data-theme=ember] .resize-handle:focus-visible{background:#ff6c3e}
+:root[data-theme=ember] .gl-refs{color:#a6320c;background:#ffe0d2}
+.settings-theme-options{flex-wrap:wrap}
+.settings-theme-swatch.ember{background:linear-gradient(145deg,#ff531f 0 38%,#fff6f0 39% 100%);border-color:#e38a68}
 @font-face{font-family:"Symbols Nerd Font Mono";src:url("./assets/SymbolsNerdFontMono-Regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:block}
 .editor-source{height:100%;min-width:0}.markdown-workspace{display:flex;background:var(--editor-surface)}.markdown-source,.markdown-preview{min-width:0;height:100%}.markdown-source{flex:1}.markdown-split .markdown-source{border-right:1px solid var(--border)}.markdown-split .markdown-preview{flex:1}.markdown-preview{flex:1;overflow:auto;color:var(--text);background:var(--editor-surface)}.markdown-document{max-width:880px;margin:0 auto;padding:30px 42px 80px;font-size:14px;line-height:1.68;overflow-wrap:anywhere}.markdown-document>:first-child{margin-top:0}.markdown-document h1,.markdown-document h2,.markdown-document h3,.markdown-document h4{line-height:1.25;margin:1.55em 0 .65em;font-weight:650;color:var(--text)}.markdown-document h1{font-size:2em;padding-bottom:.32em;border-bottom:1px solid var(--border)}.markdown-document h2{font-size:1.5em;padding-bottom:.3em;border-bottom:1px solid var(--border)}.markdown-document h3{font-size:1.22em}.markdown-document p,.markdown-document ul,.markdown-document ol,.markdown-document blockquote,.markdown-document table,.markdown-document pre{margin:0 0 1.1em}.markdown-document a{color:var(--accent);text-decoration:none}.markdown-document a:hover{text-decoration:underline}.markdown-document blockquote{margin-left:0;padding:.1em 1em;color:var(--muted);border-left:3px solid var(--accent)}.markdown-document code{font-family:"SFMono-Regular","Symbols Nerd Font Mono",Menlo,monospace;font-size:.9em;background:var(--field);border-radius:5px;padding:.16em .38em}.markdown-document pre{overflow:auto;padding:14px 16px;background:var(--field);border:1px solid var(--border);border-radius:9px}.markdown-document pre code{padding:0;background:transparent}.markdown-document table{width:100%;border-collapse:collapse;display:block;overflow:auto}.markdown-document th,.markdown-document td{padding:7px 11px;border:1px solid var(--border);text-align:left}.markdown-document th{background:var(--field);font-weight:600}.markdown-document img{display:block;max-width:100%;height:auto;border-radius:8px}.markdown-document hr{height:1px;margin:24px 0;border:0;background:var(--border)}.markdown-document li+li{margin-top:.3em}.markdown-document input[type=checkbox]{margin-right:7px;accent-color:var(--accent)}.markdown-document .contains-task-list{padding-left:0;list-style:none}.markdown-mode-switch{display:flex;gap:2px;padding:2px;background:var(--field);border:1px solid var(--border);border-radius:8px}.markdown-mode-switch button{padding:3px 8px;border-radius:5px;font-size:11px}.markdown-mode-switch button.selected{background:var(--selected);color:var(--selected-text)}

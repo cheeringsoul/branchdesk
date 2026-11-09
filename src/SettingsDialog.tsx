@@ -45,7 +45,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
           </aside>
           <div className="settings-content">
             {section === "appearance" ? (
-              <><h2>Appearance</h2><p className="muted">Choose the BranchDesk interface theme.</p><div className="settings-theme-options"><button className={theme === "light" ? "selected" : ""} onClick={() => setTheme("light")}><span className="settings-theme-swatch light" />Light</button><button className={theme === "violet" ? "selected" : ""} onClick={() => setTheme("violet")}><span className="settings-theme-swatch violet" />Dusk</button></div></>
+              <><h2>Appearance</h2><p className="muted">Choose the BranchDesk interface theme.</p><div className="settings-theme-options"><button className={theme === "light" ? "selected" : ""} onClick={() => setTheme("light")}><span className="settings-theme-swatch light" />Light</button><button className={theme === "violet" ? "selected" : ""} onClick={() => setTheme("violet")}><span className="settings-theme-swatch violet" />Dusk</button><button className={theme === "ember" ? "selected" : ""} onClick={() => setTheme("ember")}><span className="settings-theme-swatch ember" />Ember</button></div></>
             ) : (
               <><h2>Terminal</h2><p className="muted">These settings apply to all BranchDesk terminals.</p><div className="settings-form">
                 <label><span>Shell</span><select value={terminal.shell} onChange={(event) => update("shell", event.target.value)}><option value="">System Default</option><option value="/bin/zsh">zsh</option><option value="/bin/bash">bash</option></select><small>Shell changes take effect after restarting the terminal.</small></label>

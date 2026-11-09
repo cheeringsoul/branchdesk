@@ -10,9 +10,18 @@ import {
   terminalSettingsEvent,
   type TerminalSettings,
 } from "./terminalSettings";
+import { storedTheme, type Theme } from "./ThemePicker";
 
-const terminalTheme = (dark: boolean): ITheme =>
-  dark
+const terminalTheme = (theme: Theme): ITheme =>
+  theme === "ember"
+    ? {
+        background: "#fffdfb", foreground: "#382820", cursor: "#ff531f", cursorAccent: "#fffdfb",
+        selectionBackground: "#ff531f38", black: "#382820", red: "#cc3f34", green: "#438257",
+        yellow: "#9c6a14", blue: "#426ca8", magenta: "#93558c", cyan: "#337d7a", white: "#eee0d8",
+        brightBlack: "#8c756a", brightRed: "#dd594d", brightGreen: "#57966a", brightYellow: "#ad7c27",
+        brightBlue: "#5880ba", brightMagenta: "#a66b9f", brightCyan: "#488f8c", brightWhite: "#ffffff",
+      }
+    : theme === "violet"
     ? {
         background: "#1d2028", foreground: "#dce2ee", cursor: "#c4adf4", cursorAccent: "#1d2028",
         selectionBackground: "#7460d84d", black: "#20242d", red: "#f17c8e", green: "#98d7aa",
@@ -83,7 +92,7 @@ export function TerminalPanel({ root }: { root: string }) {
       scrollback: currentSettings.scrollback,
       smoothScrollDuration: 120,
       allowTransparency: false,
-      theme: terminalTheme(document.documentElement.dataset.theme === "violet"),
+      theme: terminalTheme(storedTheme()),
     });
     const fit = new FitAddon();
     terminalRef.current = terminal;
@@ -100,7 +109,7 @@ export function TerminalPanel({ root }: { root: string }) {
     });
 
     const handleThemeChange = (event: Event) => {
-      terminal.options.theme = terminalTheme((event as CustomEvent<string>).detail === "vs-dark");
+      terminal.options.theme = terminalTheme((event as CustomEvent<Theme>).detail);
     };
     window.addEventListener("branchdesk-theme", handleThemeChange);
 

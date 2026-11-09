@@ -46,6 +46,28 @@ import type { Repo, Entry, Tab } from "./types";
 import "./style.css";
 (window as any).MonacoEnvironment = { getWorker: () => new Worker() };
 loader.config({ monaco });
+monaco.editor.defineTheme("branchdesk-ember", {
+  base: "vs",
+  inherit: true,
+  rules: [
+    { token: "comment", foreground: "927568" },
+    { token: "keyword", foreground: "D83E09" },
+    { token: "string", foreground: "A4511E" },
+    { token: "number", foreground: "C5522C" },
+  ],
+  colors: {
+    "editor.background": "#FFFDFB",
+    "editor.foreground": "#382820",
+    "editorCursor.foreground": "#FF531F",
+    "editor.selectionBackground": "#FFD2BF",
+    "editor.inactiveSelectionBackground": "#FFE5D9",
+    "editor.lineHighlightBackground": "#FFF5EF",
+    "editorLineNumber.foreground": "#B09587",
+    "editorLineNumber.activeForeground": "#B73207",
+    "editorIndentGuide.background1": "#EAD8CE",
+    "editorIndentGuide.activeBackground1": "#D69478",
+  },
+});
 const TERMINAL_PREFIX = "\0terminal:";
 const terminalPath = (id: string) => TERMINAL_PREFIX + id;
 const isTerminalPath = (path: string) => path.startsWith(TERMINAL_PREFIX);
@@ -124,6 +146,27 @@ function App() {
     setReview(null);
     setActive(terminalPath(id));
   }, []);
+  const terminalButtonClickTimer = useRef<number | null>(null);
+  const openTerminalFromRail = useCallback(() => {
+    if (terminalButtonClickTimer.current !== null) window.clearTimeout(terminalButtonClickTimer.current);
+    terminalButtonClickTimer.current = window.setTimeout(() => {
+      terminalButtonClickTimer.current = null;
+      if (terminals.length) {
+        setComparisonActive("");
+        setReview(null);
+        setActive(terminalPath(terminals.at(-1)!.id));
+      } else {
+        newTerminal();
+      }
+    }, 200);
+  }, [newTerminal, terminals]);
+  const createTerminalFromRail = useCallback(() => {
+    if (terminalButtonClickTimer.current !== null) {
+      window.clearTimeout(terminalButtonClickTimer.current);
+      terminalButtonClickTimer.current = null;
+    }
+    newTerminal();
+  }, [newTerminal]);
   const dirtyPaths = useMemo(
     () => new Set(tabs.filter((t) => t.content !== t.saved).map((t) => t.path)),
     [tabs],
@@ -513,17 +556,10 @@ function App() {
           </button>
           <button
             className={isTerminalPath(active) ? "selected" : ""}
-            title="Terminal"
+            title="Terminal · Double-click to open a new terminal"
             disabled={!repo}
-            onClick={() => {
-              if (terminals.length) {
-                setComparisonActive("");
-                setReview(null);
-                setActive(terminalPath(terminals.at(-1)!.id));
-              } else {
-                newTerminal();
-              }
-            }}
+            onClick={openTerminalFromRail}
+            onDoubleClick={createTerminalFromRail}
             aria-label="Terminal"
           >
             <SquareTerminal />
